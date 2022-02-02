@@ -1,0 +1,33 @@
+demi - de-multiple-inheritance; squash class inheritance
+========================================================
+
+Did you make a mistake in designing a mess of classes with multiple inheritance
+everywhere?
+
+Do you want to understand deeply nested class hierarchies without navigating
+many different source code files?
+
+Will you avoid making such mistakes in the future?
+
+... well, my answers to the above questions are "yes :(", "yes!", and "probably
+not", respectively.
+
+In any case -
+
+This repo is a proof-of-concept of a tool that may have the potential to help
+with the above.  It probably won't help you just yet.
+
+Requirements
+------------
+
+* Python 3.9+ (for ``ast.unparse``)
+
+Maybe TODO
+----------
+
+* Properties have the same name twice, so only the setter gets shown
+* Switch to redbaron to retain comments?
+* Automatically invoke black to reformat the output?
+* Test suite?
+* For returns at the end of the method, simplify code?
+* Consider astor for Python below 3.9?

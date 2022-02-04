@@ -5,9 +5,9 @@ from setuptools import find_packages, setup
 
 import versioneer
 
-min_version = (3, 6)
+MIN_VERSION = (3, 9)
 
-if sys.version_info < min_version:
+if sys.version_info < MIN_VERSION:
     error = """
 demi does not support Python {0}.{1}.
 Python {2}.{3} and above is required. Check your Python version like so:
@@ -18,7 +18,7 @@ This may be due to an out-of-date pip. Make sure you have pip >= 9.0.1.
 Upgrade pip like so:
 
 pip install --upgrade pip
-""".format(*sys.version_info[:2], *min_version)
+""".format(*sys.version_info[:2], *MIN_VERSION)
     sys.exit(error)
 
 

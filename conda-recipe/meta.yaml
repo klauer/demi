@@ -1,36 +1,39 @@
-
-{% set data = load_setup_py_data() %}
-
+{% set name = "demi" %}
+{% set version = "0.0.0" %}
 
 package:
-    name    : demi
-
-    version : {{ data.get('version') }}
-
+  name: {{ name|lower }}
+  version: {{ version }}
 
 source:
-    path: ..
+  url: https://github.com/klauer/demi/archive/v{{ version }}.tar.gz
+  sha256:
 
 build:
-    number: 1
-    noarch: python
+  noarch: python
+  number: 0
+  script: "{{ PYTHON }} -m pip install . -vv"
 
 requirements:
-    build:
-      - python >=3.6
-      - setuptools
-
-    run:
-      - python >=3.6
+  host:
+    - python >=3.9
+    - pip
+  run:
+    - python >=3.9
 
 test:
-    imports:
-      - demi
-
-    requires:
-      - pytest
+  imports:
+    - demi
 
 about:
-  home: https://github.com/klauer/demi
-  license: SLAC Open License
-  summary: de-multiple-inheritance; squash class inheritance
+  home: https://github.com/klauer/
+  doc_url: https://klauer.github.io/klauer/demi
+  dev_url: https://github.com/klauer/demi
+  license: LicenseRef-BSD-3-Clause-SLAC
+  license_family: BSD
+  license_file: LICENSE
+  summary: 'de-multiple-inheritance; squash class inheritance'
+
+extra:
+  recipe-maintainers:
+    - klauer

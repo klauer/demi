@@ -40,7 +40,7 @@ class ClassDefinition:
                     continue
                 raise
 
-            mod = ast.parse(cls_source, filename=filename)
+            mod = ast.parse(cls_source, filename=filename or "demi_unknown.py")
             node, = mod.body
 
             assert isinstance(node, ast.ClassDef)
@@ -250,45 +250,3 @@ class DemiMethodRewriter(ast.NodeTransformer):
                 return outer_call
 
         return node
-
-
-def test():
-    from tests.cls_ab import C
-    logging.basicConfig(level="DEBUG")
-
-    defn_c = ClassDefinition.from_class(C)
-    print("Original")
-    print(defn_c.to_code())
-
-    print("\n\nStep 1")
-    defn_c = defn_c.demi()
-    print(defn_c.to_code())
-
-    print("\n\nStep 2")
-    defn_c = defn_c.demi()
-    print(defn_c.to_code())
-
-
-def test_state():
-    from pcdsdevices.state import StateRecordPositioner
-    logging.basicConfig(level="DEBUG")
-
-    defn_c = ClassDefinition.from_class(StateRecordPositioner)
-    defn_c = defn_c.demi_full(debug=True)
-    print(defn_c.to_code())
-
-
-def test_ophyd():
-    from ophyd.areadetector.filestore_mixins import \
-        FileStoreHDF5SingleIterativeWrite
-    logging.basicConfig(level="DEBUG")
-
-    defn_c = ClassDefinition.from_class(FileStoreHDF5SingleIterativeWrite)
-    defn_c = defn_c.demi_full(debug=True)
-    print(defn_c.to_code())
-
-
-if __name__ == "__main__":
-    # test()
-    # test_state()
-    test_ophyd()

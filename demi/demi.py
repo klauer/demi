@@ -130,11 +130,11 @@ class ClassDefinition:
             ]
             for idx, rewritten_method in enumerate(rewritten_methods):
                 if idx < len(target_indices):
-                    target_idx = target_indices[idx]
-                    supercls.node.body[target_idx] = rewritten_method
+                    supercls.node.body[target_indices[idx]] = rewritten_method
                 else:
                     last_idx = target_indices[-1]
                     supercls.node.body.insert(last_idx + 1, rewritten_method)
+            supercls.functions[func_name] = rewritten_methods
 
         return rewritten_methods or None
 

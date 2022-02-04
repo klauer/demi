@@ -1,0 +1,11 @@
+[run]
+source =
+    demi
+[report]
+omit =
+    #versioning
+    .*version.*
+    *_version.py
+    #tests
+    *test*
+    demi/tests/*

@@ -167,11 +167,14 @@ def _insert_docstring(body: List[ast.AST], doc: ast.Expression):
 
 def _replace_base_class(baseclass: ClassDefinition, subclass: ClassDefinition):
     """Remove ``baseclass`` from ``subclass`` and add in its subclasses."""
-    # TODO: import scoping and such
+    def is_base_class(base):
+        # TODO: import scoping and such
+        return ast.unparse(base).split(".")[-1] == baseclass.name
+
     base_idx = [
         idx
         for idx, base in enumerate(subclass.node.bases)
-        if getattr(base, "id") == baseclass.name
+        if is_base_class(base)
     ]
 
     if base_idx:
@@ -199,17 +202,15 @@ class DemiMethodRewriter(ast.NodeTransformer):
         self.cls = cls
         self.method_node = method_node
         self.method_name = method_node.name
-        self.base_targets_by_name = {
+        self.bases_by_name = {
             supercls.name: supercls
             for supercls in self.cls.mro[1:]
             if self.method_name in supercls.functions
         }
-        self.base_targets = list(self.base_targets_by_name.values())
+        self.bases = list(self.bases_by_name.values())
 
     def run(self):
-        # from_func = self.method_node
-        # to_func = None
-        if not self.base_targets:
+        if not self.bases:
             return self.method_node
 
         self._to_insert = []
@@ -230,7 +231,7 @@ class DemiMethodRewriter(ast.NodeTransformer):
             outer_call = cast(ast.Call, outer_call)
             outer_func = getattr(outer_call.func, "id", None)
             if outer_func == "super":
-                target = self.base_targets[0]
+                target = self.bases[0]
                 to_insert = copy.deepcopy(target.functions.get(self.method_name, None))
                 if to_insert is None or self.method_name != func_name:
                     # TODO: function could actually be trying to skip

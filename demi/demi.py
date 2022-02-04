@@ -6,7 +6,7 @@ import dataclasses
 import inspect
 import logging
 import textwrap
-from typing import List, Optional, Union, cast
+from typing import Dict, List, Optional, Union, cast
 
 logger = logging.getLogger(__name__)
 
@@ -18,7 +18,7 @@ function_def_types = (ast.FunctionDef, ast.AsyncFunctionDef)
 class ClassDefinition:
     node: ast.ClassDef
     cls: type
-    functions: dict[str, AnyFunctionDef]
+    functions: Dict[str, List[AnyFunctionDef]]
     mro: list[ClassDefinition]
 
     def to_code(self) -> str:
@@ -53,11 +53,7 @@ class ClassDefinition:
             defn = ClassDefinition(
                 node=node,
                 cls=part,
-                functions={
-                    func.name: func
-                    for func in node.body
-                    if isinstance(func, function_def_types)
-                },
+                functions=_get_functions(node.body),
                 mro=part_mro,
                 # source_filename=...
             )
@@ -82,6 +78,66 @@ class ClassDefinition:
             result = result.demi()
         return result
 
+    def _rewrite_method(
+        self,
+        supercls: ClassDefinition,
+        func_name: str,
+    ) -> Optional[List[AnyFunctionDef]]:
+        """
+        Starting with our subclass, insert the superclass method definition.
+        """
+
+        # TODO: not necessarily true; properties, setters?
+        supercls_funcs = supercls.functions.get(func_name, None)
+        if not supercls_funcs:
+            return None
+
+        # TODO might not be correct; how to choose the getter, e.g., of a
+        # property?  If instantiable, easy to determine...
+        supercls_func = supercls_funcs[-1]
+
+        rewritten_methods = []
+        for idx, this_func in enumerate(self.functions[func_name]):
+            logger.debug(
+                "Combining superclass %s.%s:\n"
+                "%s\n"
+                "With %s.%s:\n"
+                "%s\n",
+                supercls.name,
+                supercls_func.name,
+                textwrap.indent(ast.unparse(supercls_func), "    "),
+                self.name,
+                this_func.name,
+                textwrap.indent(ast.unparse(this_func), "    "),
+            )
+            rewriter = DemiMethodRewriter(self, this_func)
+            rewritten_method = rewriter.run()
+            logger.debug(
+                "Rewrote [%s, %s].%s to:\n"
+                "%s\n",
+                supercls.name,
+                self.name,
+                rewritten_method.name,
+                textwrap.indent(ast.unparse(rewritten_method), "    "),
+            )
+            assert rewritten_method.name == func_name
+            rewritten_methods.append(rewritten_method)
+
+        if rewritten_methods:
+            target_indices = [
+                supercls.node.body.index(func)
+                for func in supercls_funcs
+            ]
+            for idx, rewritten_method in enumerate(rewritten_methods):
+                if idx < len(target_indices):
+                    target_idx = target_indices[idx]
+                    supercls.node.body[target_idx] = rewritten_method
+                else:
+                    last_idx = target_indices[-1]
+                    supercls.node.body.insert(last_idx + 1, rewritten_method)
+
+        return rewritten_methods or None
+
     def demi(self) -> ClassDefinition:
         superclasses = self.mro[1:]
         if not superclasses:
@@ -89,39 +145,12 @@ class ClassDefinition:
 
         to_add = []
         supercls = superclasses[0]
-        for func_name, this_func in list(self.functions.items()):
-            supercls_func = supercls.functions.get(func_name, None)
-            if supercls_func:
-                logger.debug(
-                    "Combining superclass %s.%s:\n"
-                    "%s\n"
-                    "With %s.%s:\n"
-                    "%s\n",
-                    supercls.name,
-                    supercls_func.name,
-                    textwrap.indent(ast.unparse(supercls_func), "    "),
-                    self.name,
-                    this_func.name,
-                    textwrap.indent(ast.unparse(this_func), "    "),
-                )
-                old_idx = supercls.node.body.index(supercls_func)
-                rewriter = DemiMethodRewriter(self, this_func)
-                rewritten_method = rewriter.run()
-                supercls.node.body[old_idx] = rewritten_method
-                supercls.functions[func_name] = rewritten_method
-                logger.debug(
-                    "Rewrote [%s, %s].%s to:\n"
-                    "%s\n",
-                    supercls.name,
-                    self.name,
-                    rewritten_method.name,
-                    textwrap.indent(ast.unparse(rewritten_method), "    "),
-                )
-                assert rewritten_method.name == func_name
-            else:
+        for func_name, this_funcs in list(self.functions.items()):
+            rewritten_method = self._rewrite_method(supercls, func_name)
+            if rewritten_method is None:
                 # TODO try to insert things in best-effort order as a merge
                 # new_functions.append(func)
-                to_add.append(this_func)
+                to_add.extend(this_funcs)
 
         for idx, node in enumerate(self.node.body):
             const = _get_string_constant(node)
@@ -136,7 +165,7 @@ class ClassDefinition:
                 supercls.node.body.append(node)
 
         for func in to_add:
-            supercls.functions[func.name] = func
+            supercls.functions[func.name] = [func]
             supercls.node.body.append(func)
 
         _replace_base_class(supercls, self)
@@ -145,7 +174,16 @@ class ClassDefinition:
         return supercls
 
 
+def _get_functions(nodes: List[ast.AST]) -> Dict[str, List[AnyFunctionDef]]:
+    result = {}  # -> defaultdict(list)
+    for node in nodes:
+        if isinstance(node, function_def_types):
+            result.setdefault(node.name, []).append(node)
+    return result
+
+
 def _get_string_constant(node: ast.AST) -> Optional[str]:
+    # -> ast.unparse()
     if isinstance(node, ast.Expr):
         if isinstance(node.value, ast.Constant):
             const = node.value.value
@@ -232,17 +270,19 @@ class DemiMethodRewriter(ast.NodeTransformer):
             outer_func = getattr(outer_call.func, "id", None)
             if outer_func == "super":
                 target = self.bases[0]
-                to_insert = copy.deepcopy(target.functions.get(self.method_name, None))
-                if to_insert is None or self.method_name != func_name:
+                super_impls = target.functions.get(self.method_name, None)
+                # TOOD: how to choose?
+                super_impl = copy.deepcopy(super_impls[-1]) if super_impls else None
+                if super_impl is None or self.method_name != func_name:
                     # TODO: function could actually be trying to skip
                     # subclass implementation of unrelated (func_name)
                     outer_call.func.id = f"self.{func_name}"
-                elif to_insert not in self._to_insert:
+                elif super_impl not in self._to_insert:
                     outer_call.func.id = f"_super_{target.name}"
-                    if to_insert.args.args[0].arg == "self":
-                        to_insert.args.args = to_insert.args.args[1:]
-                    to_insert.name = outer_call.func.id
-                    self._to_insert.append(to_insert)
+                    if super_impl.args.args[0].arg == "self":
+                        super_impl.args.args = super_impl.args.args[1:]
+                    super_impl.name = outer_call.func.id
+                    self._to_insert.append(super_impl)
                     # TODO: better way around this?
                     outer_call.args = node.args
                     outer_call.keywords = node.keywords

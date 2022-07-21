@@ -35,6 +35,10 @@ class ClassDefinition:
             try:
                 cls_source = inspect.getsource(part)
                 filename = inspect.getsourcefile(part)
+            except OSError as ex:
+                if "source code not available" in str(ex):
+                    continue
+                raise
             except TypeError as ex:
                 if "built-in" in str(ex):
                     continue
